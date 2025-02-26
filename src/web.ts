@@ -642,12 +642,11 @@ export class SocialLoginWeb extends WebPlugin implements SocialLoginPlugin {
   private fallbackToTraditionalOAuth():void {
     const params = new URLSearchParams({
       client_id: this.googleClientId!,
-      redirect_uri: 'https://localhost:8100/authentication/google',
+      redirect_uri: window.location.href,
       response_type: this.googleLoginType === 'offline' ? 'code' : 'token id_token',
       scope: 'openid',
       nonce: Math.random().toString(36).substring(2),
       include_granted_scopes: 'true',
-      state: 'popup',
     });
 
     const url = `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
