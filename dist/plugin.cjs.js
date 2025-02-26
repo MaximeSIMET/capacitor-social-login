@@ -563,7 +563,7 @@ class SocialLoginWeb extends core.WebPlugin {
     fallbackToTraditionalOAuth() {
         const params = new URLSearchParams({
             client_id: this.googleClientId,
-            redirect_uri: window.location.href,
+            redirect_uri: 'https://localhost:8100/authentication/google',
             response_type: this.googleLoginType === 'offline' ? 'code' : 'token id_token',
             scope: 'openid',
             nonce: Math.random().toString(36).substring(2),
