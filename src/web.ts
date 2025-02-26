@@ -399,7 +399,7 @@ export class SocialLoginWeb extends WebPlugin implements SocialLoginPlugin {
 
   private loginWithGoogle<T extends 'google'>(
     options: GoogleLoginOptions,
-  ): Promise<{ provider: T; result: ProviderResponseMap[T] }> {
+  ): Promise<{ provider: T; result: ProviderResponseMap[T] } | void> {
     if (!this.googleClientId) {
       throw new Error('Google Client ID not set. Call initialize() first.');
     }
@@ -427,7 +427,8 @@ export class SocialLoginWeb extends WebPlugin implements SocialLoginPlugin {
 
     if (scopes.length > 3 || this.googleLoginType === 'offline' || options.disableOneTap) {
       // If scopes are provided, directly use the traditional OAuth flow
-      return this.fallbackToTraditionalOAuth(scopes);
+      this.fallbackToTraditionalOAuth();
+      return Promise.resolve();
     }
 
     return new Promise((resolve, reject) => {
@@ -463,9 +464,8 @@ export class SocialLoginWeb extends WebPlugin implements SocialLoginPlugin {
         if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
           console.log('OneTap is not displayed or skipped');
           // Fallback to traditional OAuth if One Tap is not available
-          this.fallbackToTraditionalOAuth(scopes)
-            .then((r) => resolve({ provider: 'google' as T, result: r.result }))
-            .catch(reject);
+          this.fallbackToTraditionalOAuth();
+          return Promise.resolve();
         } else {
           console.log('OneTap is displayed');
         }
@@ -561,14 +561,6 @@ export class SocialLoginWeb extends WebPlugin implements SocialLoginPlugin {
     });
   }
 
-  private persistStateGoogle(accessToken: string, idToken: string) {
-    try {
-      window.localStorage.setItem('capgo_social_login_google_state', JSON.stringify({ accessToken, idToken }));
-    } catch (e) {
-      console.error('Cannot persist state google', e);
-    }
-  }
-
   private clearStateGoogle() {
     try {
       window.localStorage.removeItem('capgo_social_login_google_state');
@@ -647,91 +639,19 @@ export class SocialLoginWeb extends WebPlugin implements SocialLoginPlugin {
     });
   }
 
-  private async fallbackToTraditionalOAuth<T extends 'google'>(
-    scopes: string[],
-  ): Promise<{ provider: T; result: ProviderResponseMap[T] }> {
-    const uniqueScopes = [...new Set([...scopes, 'openid'])];
-
+  private fallbackToTraditionalOAuth():void {
     const params = new URLSearchParams({
       client_id: this.googleClientId!,
       redirect_uri: window.location.href,
       response_type: this.googleLoginType === 'offline' ? 'code' : 'token id_token',
-      scope: uniqueScopes.join(' '),
+      scope: 'openid',
       nonce: Math.random().toString(36).substring(2),
       include_granted_scopes: 'true',
       state: 'popup',
     });
 
     const url = `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
-    const width = 500;
-    const height = 600;
-    const left = window.screenX + (window.outerWidth - width) / 2;
-    const top = window.screenY + (window.outerHeight - height) / 2;
     localStorage.setItem(SocialLoginWeb.OAUTH_STATE_KEY, 'true');
-    const popup = window.open(url, 'Google Sign In', `width=${width},height=${height},left=${left},top=${top},popup=1`);
-
-    // This may never return...
-    return new Promise((resolve, reject) => {
-      if (!popup) {
-        reject(new Error('Failed to open popup'));
-        return;
-      }
-
-      const handleMessage = (event: MessageEvent) => {
-        if (event.origin !== window.location.origin) return;
-
-        if (event.data?.type === 'oauth-response') {
-          window.removeEventListener('message', handleMessage);
-
-          if (this.googleLoginType === 'online') {
-            const { accessToken, idToken } = event.data;
-            if (accessToken && idToken) {
-              const profile = this.parseJwt(idToken);
-              this.persistStateGoogle(accessToken.token, idToken);
-              resolve({
-                provider: 'google' as T,
-                result: {
-                  accessToken: {
-                    token: accessToken.token,
-                  },
-                  idToken,
-                  profile: {
-                    email: profile.email || null,
-                    familyName: profile.family_name || null,
-                    givenName: profile.given_name || null,
-                    id: profile.sub || null,
-                    name: profile.name || null,
-                    imageUrl: profile.picture || null,
-                  },
-                  responseType: 'online',
-                },
-              });
-            }
-          } else {
-            const { serverAuthCode } = event.data.result as {
-              serverAuthCode: string;
-            };
-            resolve({
-              provider: 'google' as T,
-              result: {
-                responseType: 'offline',
-                serverAuthCode,
-              },
-            });
-          }
-        } else {
-          reject(new Error('Login failed'));
-        }
-      };
-
-      window.addEventListener('message', handleMessage);
-
-      // Timeout after 5 minutes
-      setTimeout(() => {
-        window.removeEventListener('message', handleMessage);
-        popup.close();
-        reject(new Error('OAuth timeout'));
-      }, 300000);
-    });
+    window.location.href = url;
   }
 }
