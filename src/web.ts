@@ -9,7 +9,7 @@ import type {
   AuthorizationCodeOptions,
   isLoggedInOptions,
   ProviderResponseMap,
-  FacebookLoginOptions,
+  FacebookLoginOptions, GoogleLoginOptions,
 } from './definitions';
 import { FacebookSocialLogin } from './facebook-provider';
 import { GoogleSocialLogin } from './google-provider';
@@ -55,7 +55,7 @@ export class SocialLoginWeb extends WebPlugin implements SocialLoginPlugin {
 
     if (options.google?.webClientId) {
       initPromises.push(
-        this.googleProvider.initialize(options.google.webClientId, options.google.mode, options.google.hostedDomain),
+        this.googleProvider.initialize(options.google.webClientId, options.google.mode),
       );
     }
 
@@ -75,7 +75,7 @@ export class SocialLoginWeb extends WebPlugin implements SocialLoginPlugin {
   ): Promise<{ provider: T; result: ProviderResponseMap[T] }> {
     switch (options.provider) {
       case 'google':
-        return this.googleProvider.login(options.options) as Promise<{ provider: T; result: ProviderResponseMap[T] }>;
+        return this.googleProvider.login(options.options as GoogleLoginOptions) as Promise<{ provider: T; result: ProviderResponseMap[T] }>;
       case 'apple':
         return this.appleProvider.login(options.options) as Promise<{ provider: T; result: ProviderResponseMap[T] }>;
       case 'facebook':

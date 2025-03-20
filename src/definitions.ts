@@ -77,6 +77,11 @@ export interface FacebookLoginOptions {
 
 export interface GoogleLoginOptions {
   /**
+   * Redirect URI you have configured on google cloud platform
+   * @description redirect uri
+   */
+  redirectUri: string;
+  /**
    * Specifies the scopes required for accessing Google APIs
    * The default is defined in the configuration.
    * @example ["profile", "email"]
@@ -88,24 +93,6 @@ export interface GoogleLoginOptions {
    * @description nonce
    */
   nonce?: string;
-  /**
-   * Force refresh token (only for Android)
-   * @description force refresh token
-   * @default false
-   */
-  forceRefreshToken?: boolean;
-  /**
-   * Force account selection prompt (iOS)
-   * @description forces the account selection prompt to appear on iOS
-   * @default false
-   */
-  forcePrompt?: boolean;
-  /**
-   * Style
-   * @description style
-   * @default 'standard'
-   */
-  style?: 'bottom' | 'standard';
 }
 
 export interface GoogleLoginResponseOnline {

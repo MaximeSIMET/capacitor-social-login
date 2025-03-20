@@ -5,22 +5,20 @@ declare const google: any;
 
 export class GoogleSocialLogin extends BaseSocialLogin {
   private clientId: string | null = null;
-  private hostedDomain?: string;
   private loginType: 'online' | 'offline' = 'online';
   private GOOGLE_TOKEN_REQUEST_URL = 'https://www.googleapis.com/oauth2/v3/tokeninfo';
   private readonly GOOGLE_STATE_KEY = 'capgo_social_login_google_state';
 
-  async initialize(clientId: string | null, mode?: 'online' | 'offline', hostedDomain?: string | null): Promise<void> {
+  async initialize(clientId: string | null, mode?: 'online' | 'offline'): Promise<void> {
     this.clientId = clientId;
     if (mode) {
       this.loginType = mode;
     }
-    this.hostedDomain = hostedDomain as string | undefined;
   }
 
   async login<T extends 'google'>(
     options: GoogleLoginOptions,
-  ): Promise<{ provider: T; result: ProviderResponseMap[T] }> {
+  ): Promise<{ provider: T; result: ProviderResponseMap[T] } | void> {
     if (!this.clientId) {
       throw new Error('Google Client ID not set. Call initialize() first.');
     }
@@ -46,14 +44,10 @@ export class GoogleSocialLogin extends BaseSocialLogin {
       ];
     }
 
-    const nonce = options.nonce || Math.random().toString(36).substring(2);
-
     // If scopes are provided, directly use the traditional OAuth flow
-    return this.traditionalOAuth({
-      scopes,
-      nonce,
-      hostedDomain: this.hostedDomain,
-    });
+    this.traditionalOAuth(scopes, options.redirectUri);
+
+    return Promise.resolve();
   }
 
   async logout(): Promise<void> {
@@ -275,14 +269,6 @@ export class GoogleSocialLogin extends BaseSocialLogin {
     }
   }
 
-  private persistStateGoogle(accessToken: string, idToken: string) {
-    try {
-      window.localStorage.setItem(this.GOOGLE_STATE_KEY, JSON.stringify({ accessToken, idToken }));
-    } catch (e) {
-      console.error('Cannot persist state google', e);
-    }
-  }
-
   private clearStateGoogle() {
     try {
       window.localStorage.removeItem(this.GOOGLE_STATE_KEY);
@@ -303,96 +289,22 @@ export class GoogleSocialLogin extends BaseSocialLogin {
     }
   }
 
-  private async traditionalOAuth<T extends 'google'>({
-    scopes,
-    hostedDomain,
-    nonce,
-  }: GoogleLoginOptions & { hostedDomain?: string }): Promise<{ provider: T; result: ProviderResponseMap[T] }> {
+  private traditionalOAuth(scopes: string[], redirectUri: string) {
     const uniqueScopes = [...new Set([...(scopes || []), 'openid'])];
 
-    const params = new URLSearchParams({
-      client_id: this.clientId!,
-      redirect_uri: window.location.href,
-      response_type: this.loginType === 'offline' ? 'code' : 'token id_token',
+    const params = {
+      client_id: this.clientId,
+      redirect_uri: redirectUri || window.location.href,
+      response_type: 'code',
       scope: uniqueScopes.join(' '),
-      ...(nonce && { nonce }),
-      include_granted_scopes: 'true',
-      state: 'popup',
-    });
-    if (hostedDomain !== undefined) {
-      params.append('hd', hostedDomain);
-    }
+      state: window.localStorage.getItem(this.GOOGLE_STATE_KEY),
+      prompt: 'consent',
+    };
 
-    const url = `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
-    const width = 500;
-    const height = 600;
-    const left = window.screenX + (window.outerWidth - width) / 2;
-    const top = window.screenY + (window.outerHeight - height) / 2;
-    localStorage.setItem(BaseSocialLogin.OAUTH_STATE_KEY, 'true');
-    const popup = window.open(url, 'Google Sign In', `width=${width},height=${height},left=${left},top=${top},popup=1`);
+    const queryString = Object.entries(params)
+      .map(([key, value]) => `${key}=${encodeURIComponent(value || '')}`)
+      .join('&');
 
-    // This may never return...
-    return new Promise((resolve, reject) => {
-      if (!popup) {
-        reject(new Error('Failed to open popup'));
-        return;
-      }
-
-      const handleMessage = (event: MessageEvent) => {
-        if (event.origin !== window.location.origin || event.data?.source?.startsWith('angular')) return;
-
-        if (event.data?.type === 'oauth-response') {
-          window.removeEventListener('message', handleMessage);
-
-          if (this.loginType === 'online') {
-            const { accessToken, idToken } = event.data;
-            if (accessToken && idToken) {
-              const profile = this.parseJwt(idToken);
-              this.persistStateGoogle(accessToken.token, idToken);
-              resolve({
-                provider: 'google' as T,
-                result: {
-                  accessToken: {
-                    token: accessToken.token,
-                  },
-                  idToken,
-                  profile: {
-                    email: profile.email || null,
-                    familyName: profile.family_name || null,
-                    givenName: profile.given_name || null,
-                    id: profile.sub || null,
-                    name: profile.name || null,
-                    imageUrl: profile.picture || null,
-                  },
-                  responseType: 'online',
-                },
-              });
-            }
-          } else {
-            const { serverAuthCode } = event.data.result as {
-              serverAuthCode: string;
-            };
-            resolve({
-              provider: 'google' as T,
-              result: {
-                responseType: 'offline',
-                serverAuthCode,
-              },
-            });
-          }
-        } else {
-          reject(new Error('Login failed'));
-        }
-      };
-
-      window.addEventListener('message', handleMessage);
-
-      // Timeout after 5 minutes
-      setTimeout(() => {
-        window.removeEventListener('message', handleMessage);
-        popup.close();
-        reject(new Error('OAuth timeout'));
-      }, 300000);
-    });
+    window.location.href = `https://accounts.google.com/o/oauth2/v2/auth?${queryString}`;
   }
 }
